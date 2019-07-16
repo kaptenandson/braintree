@@ -9,6 +9,7 @@ namespace SprykerEco\Zed\Braintree\Business\Payment\Transaction;
 
 use Braintree\PaymentInstrumentType;
 use Braintree\Transaction as BraintreeTransaction;
+use Braintree_TransactionLineItem;
 use Generated\Shared\Transfer\AddressTransfer;
 use Generated\Shared\Transfer\PaymentTransfer;
 use SprykerEco\Shared\Braintree\BraintreeConfig as SharedBraintreeConfig;
@@ -18,6 +19,8 @@ use SprykerEco\Zed\Braintree\Dependency\Facade\BraintreeToMoneyFacadeInterface;
 
 class PreCheckTransaction extends AbstractTransaction
 {
+    public const API_REQUEST_KEY_LINE_ITEMS = 'lineItems';
+
     /**
      * @var \SprykerEco\Zed\Braintree\Dependency\Facade\BraintreeToMoneyFacadeInterface
      */
@@ -85,6 +88,7 @@ class PreCheckTransaction extends AbstractTransaction
             'billing' => $this->getCustomerAddressData($this->getBillingAddress()),
             'shipping' => $this->getCustomerAddressData($this->getShippingAddress()),
             'channel' => $this->config->getChannel(),
+            static::API_REQUEST_KEY_LINE_ITEMS => $this->getItems(),
         ];
     }
 
@@ -212,6 +216,34 @@ class PreCheckTransaction extends AbstractTransaction
     protected function getShippingAddress()
     {
         return $this->getQuote()->requireShippingAddress()->getShippingAddress();
+    }
+
+    /**
+     * @return array
+     */
+    protected function getItems(): array
+    {
+        $requestData = [];
+
+        $itemTransfers = $this->getQuote()->getItems();
+
+
+        foreach ($itemTransfers as $itemTransfer) {
+            $requestData[] = [
+                'name' => $itemTransfer->getName(),
+                'kind' => Braintree_TransactionLineItem::DEBIT,
+                'quantity' => $itemTransfer->getQuantity(),
+                'unitAmount' => $this->moneyFacade->convertIntegerToDecimal($itemTransfer->getUnitPrice()),
+                'unitOfMeasure' => 'unit',
+                'totalAmount' => $this->moneyFacade->convertIntegerToDecimal($itemTransfer->getSumPrice()),
+                'taxAmount' => $this->moneyFacade->convertIntegerToDecimal($itemTransfer->getSumTaxAmountFullAggregation()),
+                'discountAmount' => $this->moneyFacade->convertIntegerToDecimal($itemTransfer->getSumDiscountAmountAggregation()),
+                'productCode' => $itemTransfer->getSku(),
+                'commodityCode' => $itemTransfer->getSku(),
+            ];
+        }
+
+        return $requestData;
     }
 
     /**
